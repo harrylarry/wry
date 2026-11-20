@@ -51,6 +51,8 @@ use objc2_foundation::{
   ns_string,
 };
 #[cfg(target_os = "ios")]
+use objc2::ClassType;
+#[cfg(target_os = "ios")]
 use objc2_ui_kit::{UIScrollView, UIViewAutoresizing};
 
 #[cfg(target_os = "macos")]
@@ -1467,6 +1469,15 @@ pub fn url_from_webview(webview: &WKWebView) -> Result<String> {
 
 pub fn platform_webview_version() -> Result<String> {
   unsafe {
+    // On iOS, `NSBundle::bundleWithIdentifier("com.apple.WebKit")` traps
+    // inside CoreFoundation on iOS 27 (CFRelease(NULL) in
+    // __CFBundleCopyFrameworkURLForExecutablePath) when called before
+    // UIApplicationMain has run, which is exactly when the Tauri runtime
+    // calls this during startup. Resolve the bundle from the already-loaded
+    // WKWebView class instead, which needs no identifier search.
+    #[cfg(target_os = "ios")]
+    let bundle = NSBundle::bundleForClass(WKWebView::class());
+    #[cfg(not(target_os = "ios"))]
     let Some(bundle) = NSBundle::bundleWithIdentifier(ns_string!("com.apple.WebKit")) else {
       return Err(Error::Io(std::io::Error::other(
         "failed to locate com.apple.WebKit bundle",
